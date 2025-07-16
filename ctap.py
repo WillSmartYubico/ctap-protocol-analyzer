@@ -3,12 +3,16 @@ Quick and dirty parsing of CTAP messages.
 This is a proof of concept, and a work in progress. Please ignore its ugliness for now...
 """
 
-import zmq
+#import zmq
 import binascii
 import struct
 import base64
 #from cryptography import x509
 import cbor2
+
+import csv
+import re
+import sys
 
 ### U2F
 
@@ -252,7 +256,7 @@ def cbor(cmd,data):
 			
 		case Authenticator.GetAssertion:
 			print("\tGetAssertion:")
-			cbormap = cbor2.decoder.loads(data)
+			cbormap = cbor2._decoder.loads(data)
 			# required
 			rpId = cbormap[1]
 			print("\t\t%s: %s" % ("rpId",rpId) )
@@ -307,7 +311,7 @@ def cbor_response(cmd, data):
 		case Authenticator.GetAssertion:
 			print("\tGetAssertion (response):")
 			#print("\t\t: %s" % binascii.hexlify(data))
-			cbormap = cbor2.decoder.loads(data)
+			cbormap = cbor2._decoder.loads(data)
 			# required
 			credential = cbormap[1]
 			print("\t\t%s:" % ("credential") )
@@ -332,7 +336,7 @@ def cbor_response(cmd, data):
 				print("\t\t\tTODO???", i, cbormap[i])
 		case Authenticator.GetInfo:
 			print("\tGetInfo (response):")
-			cbormap = cbor2.decoder.loads(data)
+			cbormap = cbor2._decoder.loads(data)
 			# required
 			versions = cbormap[1]
 			print("\t\t%s: %s" % ("versions",versions) )
@@ -385,37 +389,86 @@ def attestationStatement(fmt,attStmt):
 			print("\t\t\tTODO", fmt)
 
 
+def filter_csv_comments(file_object):
+	for line in file_object:
+		if not line.startswith('#'): # pass lines that don't start with #
+			yield line
+		else:
+			if re.search("total\s+phase",line,re.IGNORECASE):
+				print("Skipping Total Phase Header line")
+			elif line.count(',') > 0: # probably header row
+				yield line.strip('# ')
+
+
+
+
 ### main
 
-context = zmq.Context()
-socket = context.socket(zmq.SUB)
-socket.connect('tcp://127.0.0.1:5678')
+if len(sys.argv) > 1:
+	file = sys.argv[1]
+else:
+	print("Usage: ctap.py <filename>")
+
+
+#context = zmq.Context()
+#socket = context.socket(zmq.SUB)
+#socket.connect('tcp://127.0.0.1:5678')
 # subscribe to all messages (empty prefix filter)
-socket.setsockopt_string(zmq.SUBSCRIBE, '')
+#socket.setsockopt_string(zmq.SUBSCRIBE, '')
 
-command = 0
-while True:
-	report = socket.recv()
-	#print(binascii.hexlify(report))
+ctap_devices = []
 
-	(prefix,size,), report = struct.unpack("IB", report[:5]), report[5:]
-	report, postfix = report[:size], report[size:]
-	if(len(postfix)==4):
-		msg_type = "response"
-	else:
-		msg_type = "request"
-	(channelID,cmd,), report = struct.unpack(">IB", report[:5]), report[5:]
-	if( cmd&0x80 ):
-		command = cmd&0x7f
-		(msg_size,), report = struct.unpack(">H", report[:2]), report[2:]
-#		print("[%s] Command %i [%i bytes]" % (format(channelID, '08x'), cmd&127, msg_size))
-		msg = report
-		if( len(msg) > msg_size):
-			msg = msg[:msg_size] # strip 0s
-			u2fhid(command, msg, msg_type) # msg complete
-	else:
-#		print("[%s] Cont %i [%i bytes]" % (format(channelID, '08x'), cmd&0x7f, size))
-		msg += report
-		if( len(msg) > msg_size):
-			msg = msg[:msg_size] # strip 0s
-			u2fhid(command, msg, msg_type) # msg complete
+with open(file, mode='r', newline='') as file:
+	reader = csv.DictReader(filter_csv_comments(file))
+	headers = reader.fieldnames
+	command = 0
+
+	print(headers)
+
+	msg = bytearray()
+	for row in reader:
+		#print (row['Len'])
+		if (re.search("txn", row["Record"]) and (row['Len'] == "64 B")):
+			#and (row['Dev'] == "01")  and (row['Ep'] != "00")
+			
+			if (re.match("OUT",row["Record"])):
+				msg_type = "request"
+			else:
+				msg_type = "response"
+
+			report = bytearray.fromhex( row['Data'])
+
+			
+			#(prefix,size,), report = struct.unpack("IB", report[:5]), report[5:]
+			#report, postfix = report[:size], report[size:]
+
+			(channelID,cmd,), report = struct.unpack(">IB", report[:5]), report[5:]
+			#print("%s" % format(channelID, '08x'))
+			if format(channelID, '08x') == 'ffffffff': #look for CTAP channel requests
+				ctap_devices.append((row["Dev"],row["Ep"]))
+				print("Detected CTAP channel request.  Device %s endpoint %s added to CTAP devices list" % (row["Dev"],row["Ep"]))
+			
+			if (row["Dev"],row["Ep"]) in ctap_devices:
+				#print("Device OK")
+
+				#print(channelID)
+				#print(cmd)
+				if( cmd&0x80 ):
+					command = cmd&0x7f
+					(msg_size,), report = struct.unpack(">H", report[:2]), report[2:]
+					print("Index %s Channel [%s] Command %s [%i bytes]" % (row['Index'], format(channelID, '08x'), format(cmd&0x7f, '02x'), msg_size))
+					msg = report
+					if( len(msg) > msg_size):
+						msg = msg[:msg_size] # strip 0s
+						u2fhid(command, msg, msg_type) # msg complete
+				else:
+					print("Index %s Channel [%s] Cont %s" % (row['Index'], format(channelID, '08x'), format(cmd&0x7f, '02x')))
+					if msg:
+						msg += report
+						if( len(msg) > msg_size):
+							msg = msg[:msg_size] # strip 0s
+							u2fhid(command, msg, msg_type) # msg complete
+					else:
+						print("Index %s Channel [%s] Cont %s without corresponding command packet" % (row['Index'], format(channelID, '08x'), format(cmd&0x7f, '02x')))
+			else:
+				print("Device %s endpoint %s not on CTAP devices list" % (row["Dev"],row["Ep"]))
