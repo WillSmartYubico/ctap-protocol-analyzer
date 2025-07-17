@@ -9,6 +9,7 @@ import struct
 import base64
 #from cryptography import x509
 import cbor2
+import json
 
 ### U2F
 
@@ -58,15 +59,219 @@ class CTAPHID:
 	ERROR     = 0x3f  # Error response
 
 class Authenticator:
-	MakeCredential   = 0x01
-	GetAssertion     = 0x02
-	GetInfo          = 0x04
-	ClientPIN        = 0x06
-	Reset            = 0x07
-	GetNextAssertion = 0x08
-	VendorFirst      = 0x40
-	VendorLast       = 0xbf
+	MakeCredential                      = 0x01
+	GetAssertion                        = 0x02
+	GetInfo                             = 0x04
+	ClientPIN                           = 0x06
+	Reset                               = 0x07
+	GetNextAssertion                    = 0x08
+	AuthenticatorBioEnrollment          = 0x09
+	PrototypeAuthenticatorBioEnrollment = 0x40
+	AuthenticatorCredentialManagement   = 0x41
+	VendorFirst                         = 0x40
+	VendorLast                          = 0xbf
 
+CTAP2_OK = 0x00
+
+status_codes = {
+  0x00: 'CTAP1_ERR_SUCCESS',    # Indicates successful response. (CTAP2_OK)
+  0x01: 'CTAP1_ERR_INVALID_COMMAND',    # The command is not a valid CTAP command.
+  0x02: 'CTAP1_ERR_INVALID_PARAMETER',  # The command included an invalid parameter.
+  0x03: 'CTAP1_ERR_INVALID_LENGTH',     # Invalid message or item length.
+  0x04: 'CTAP1_ERR_INVALID_SEQ',        # Invalid message sequencing.
+  0x05: 'CTAP1_ERR_TIMEOUT',    # Message timed out.
+  0x06: 'CTAP1_ERR_CHANNEL_BUSY',       # Channel busy. Client SHOULD retry the request after a short delay. Note that the client MAY abort the transaction if the command is no longer relevant.
+  0x0A: 'CTAP1_ERR_LOCK_REQUIRED',      # Command requires channel lock.
+  0x0B: 'CTAP1_ERR_INVALID_CHANNEL',    # Command not allowed on this cid.
+  0x11: 'CTAP2_ERR_CBOR_UNEXPECTED_TYPE',       # Invalid/unexpected CBOR error.
+  0x12: 'CTAP2_ERR_INVALID_CBOR',       # Error when parsing CBOR.
+  0x14: 'CTAP2_ERR_MISSING_PARAMETER',  # Missing non-optional parameter.
+  0x15: 'CTAP2_ERR_LIMIT_EXCEEDED',     # Limit for number of items exceeded.
+  0x17: 'CTAP2_ERR_FP_DATABASE_FULL',   # Fingerprint data base is full, e.g., during enrollment.
+  0x18: 'CTAP2_ERR_LARGE_BLOB_STORAGE_FULL',    # Large blob storage is full. (See § 6.10.3 Large, per-credential blobs.)
+  0x19: 'CTAP2_ERR_CREDENTIAL_EXCLUDED',        # Valid credential found in the exclude list.
+  0x21: 'CTAP2_ERR_PROCESSING', # Processing (Lengthy operation is in progress).
+  0x22: 'CTAP2_ERR_INVALID_CREDENTIAL', # Credential not valid for the authenticator.
+  0x23: 'CTAP2_ERR_USER_ACTION_PENDING',        # Authentication is waiting for user interaction.
+  0x24: 'CTAP2_ERR_OPERATION_PENDING',  # Processing, lengthy operation is in progress.
+  0x25: 'CTAP2_ERR_NO_OPERATIONS',      # No request is pending.
+  0x26: 'CTAP2_ERR_UNSUPPORTED_ALGORITHM',      # Authenticator does not support requested algorithm.
+  0x27: 'CTAP2_ERR_OPERATION_DENIED',   # Not authorized for requested operation.
+  0x28: 'CTAP2_ERR_KEY_STORE_FULL',     # Internal key storage is full.
+  0x2B: 'CTAP2_ERR_UNSUPPORTED_OPTION', # Unsupported option.
+  0x2C: 'CTAP2_ERR_INVALID_OPTION',     # Not a valid option for current operation.
+  0x2D: 'CTAP2_ERR_KEEPALIVE_CANCEL',   # Pending keep alive was cancelled.
+  0x2E: 'CTAP2_ERR_NO_CREDENTIALS',     # No valid credentials provided.
+  0x2F: 'CTAP2_ERR_USER_ACTION_TIMEOUT',        # A user action timeout occurred.
+  0x30: 'CTAP2_ERR_NOT_ALLOWED',        # Continuation command, such as, authenticatorGetNextAssertion not allowed.
+  0x31: 'CTAP2_ERR_PIN_INVALID',        # PIN Invalid.
+  0x32: 'CTAP2_ERR_PIN_BLOCKED',        # PIN Blocked.
+  0x33: 'CTAP2_ERR_PIN_AUTH_INVALID',   # PIN authentication,pinUvAuthParam, verification failed.
+  0x34: 'CTAP2_ERR_PIN_AUTH_BLOCKED',   # PIN authentication using pinUvAuthToken blocked. Requires power cycle to reset.
+  0x35: 'CTAP2_ERR_PIN_NOT_SET',        # No PIN has been set.
+  0x36: 'CTAP2_ERR_PUAT_REQUIRED',      # A pinUvAuthToken is required for the selected operation. See also the pinUvAuthToken option ID.
+  0x37: 'CTAP2_ERR_PIN_POLICY_VIOLATION',       # PIN policy violation. Minimum PIN length or PIN complexity may trigger this error. The platform should check the minimum PIN length in authenticatorGetInfo to discriminate between the causes of this error.
+  0x38: 'Reserved for Future Use',      # Reserved for Future Use
+  0x39: 'CTAP2_ERR_REQUEST_TOO_LARGE',  # Authenticator cannot handle this request due to memory constraints.
+  0x3A: 'CTAP2_ERR_ACTION_TIMEOUT',     # The current operation has timed out.
+  0x3B: 'CTAP2_ERR_UP_REQUIRED',        # User presence is required for the requested operation.
+  0x3C: 'CTAP2_ERR_UV_BLOCKED', # built-in user verification is disabled.
+  0x3D: 'CTAP2_ERR_INTEGRITY_FAILURE',  # A checksum did not match.
+  0x3E: 'CTAP2_ERR_INVALID_SUBCOMMAND', # The requested subcommand is either invalid or not implemented.
+  0x3F: 'CTAP2_ERR_UV_INVALID', # built-in user verification unsuccessful. The platform SHOULD retry.
+  0x40: 'CTAP2_ERR_UNAUTHORIZED_PERMISSION',    # The permissions parameter contains an unauthorized permission.
+  0x7F: 'CTAP1_ERR_OTHER',      # Other unspecified error.
+  0xDF: 'CTAP2_ERR_SPEC_LAST',  # CTAP 2 spec last error.
+  0xE0: 'CTAP2_ERR_EXTENSION_FIRST',    # Extension specific error.
+  0xEF: 'CTAP2_ERR_EXTENSION_LAST',     # Extension specific error.
+  0xF0: 'CTAP2_ERR_VENDOR_FIRST',       # Vendor specific error.
+  0xFF: 'CTAP2_ERR_VENDOR_LAST',        # Vendor specific error.
+}
+
+makeCredentialKeys = {
+  # required
+  0x01: 'clientDataHash', # Hash of the ClientData contextual binding specified by host
+  0x02: 'rp', # This PublicKeyCredentialRpEntity data structure describes a Relying Party with which the new public key credential will be associated
+  0x03: 'user', # This PublicKeyCredentialUserEntity data structure describes the user account to which the new public key credential will be associated at the RP.
+  0x04: 'pubKeyCredParams', # List of supported algorithms for credential generation, as specified in [WebAuthn]
+  # optional
+  0x05: 'excludeList', # An array of PublicKeyCredentialDescriptor structures, as specified in [WebAuthn]
+  0x06: 'extensions', # Parameters to influence authenticator operation, as specified in [WebAuthn]
+  0x07: 'options', # Parameters to influence authenticator operation, as specified in in the table below.
+  0x08: 'pinUvAuthParam', # Result of calling authenticate(pinUvAuthToken, clientDataHash)
+  0x09: 'pinUvAuthProtocol', # PIN/UV protocol version chosen by the platform
+  0x0a: 'enterpriseAttestation', # An authenticator supporting this enterprise attestation feature is enterprise attestation capable and signals its support via the ep Option ID in the authenticatorGetInfo command response.
+  0x0b: 'attestationFormatsPreference', # A prioritized list of attestation statement format identifiers that the client and/or RP prefers
+}
+
+makeCredentialResponseKeys = {
+  # required
+  0x01: 'fmt', # The attestation statement format identifier.
+  0x02: 'authData', # The authenticator data object.
+  # optional
+  0x03: 'attStmt', # The attestation statement
+  0x04: 'epAtt', # Indicates whether an enterprise attestation was returned for this credential
+  0x05: 'largeBlobKey', # the largeBlobKey for the credential
+  0x06: 'unsignedExtensionOutputs', # unsigned outputs of extensions
+}
+
+getAssertionKeys = {
+  # required
+  0x01: 'rpId (0x01)',	# relying party identifier
+  0x02: 'clientDataHash (0x02)',	# Hash of the serialized client data collected by the host
+  # optional
+  0x03: 'allowList (0x03)',	# 	An array of PublicKeyCredentialDescriptor structures
+  0x04: 'extensions (0x04)',	# 	Parameters to influence authenticator operation
+  0x05: 'options (0x05)',	# 	Parameters to influence authenticator operation
+  0x06: 'pinUvAuthParam (0x06)',	# 	Result of calling authenticate(pinUvAuthToken, clientDataHash)
+  0x07: 'pinUvAuthProtocol (0x07)',	# 	PIN/UV protocol version selected by platform
+}
+
+getAssertionResponseKeys = {
+  # required
+  0x01: 'credential (0x01)',	# PublicKeyCredentialDescriptor structure containing the credential identifier whose private key was used to generate the assertion
+  0x02: 'authData (0x02)',	# The signed-over contextual bindings made by the authenticator
+  0x03: 'signature (0x03)',	# The assertion signature produced by the authenticator
+  # optional
+  0x04: 'user (0x04)',	# PublicKeyCredentialUserEntity structure containing the user account information
+  0x05: 'numberOfCredentials (0x05)',	# Total number of account credentials for the RP
+  0x06: 'userSelected (0x06)',	# Indicates that a credential was selected by the user via interaction directly with the authenticator
+  0x07: 'largeBlobKey (0x07)',	# The contents of the associated largeBlobKey if present for the asserted credential, and if largeBlobKey was true in the extensions input
+  0x08: 'unsignedExtensionOutputs (0x08)',	# unsigned outputs of extensions
+}
+
+# https://fidoalliance.org/specs/fido-v2.2-ps-20250228/fido-client-to-authenticator-protocol-v2.2-ps-20250228.html#authenticatorGetInfo
+info = {
+  0x01: 'versions',
+  0x02: 'extensions',
+  0x03: 'aaguid', 
+  0x04: 'options',
+  0x05: 'maxMsgSize',
+  0x06: 'pinUvAuthProtocols',
+  0x07: 'maxCredentialCountInList',
+  0x08: 'maxCredentialIdLength',
+  0x09: 'transports',
+  0x0A: 'algorithms',
+  0x0B: 'maxSerializedLargeBlobArray',
+  0x0C: 'forcePINChange',
+  0x0D: 'minPINLength',
+  0x0E: 'firmwareVersion', 
+  0x0F: 'maxCredBlobLength',
+  0x10: 'maxRPIDsForSetMinPINLength',
+  0x11: 'preferredPlatformUvAttempts',
+  0x12: 'uvModality',
+  0x13: 'certifications',
+  0x14: 'remainingDiscoverableCredentials',
+  0x15: 'vendorPrototypeConfigCommands',
+  0x16: 'attestationFormats', 
+  0x17: 'uvCountSinceLastPinEntry',
+  0x18: 'longTouchForReset',
+  0x19: 'encIdentifier',
+  0x1A: 'transportsForReset',
+  0x1B: 'pinComplexityPolicy',
+  0x1C: 'pinComplexityPolicyURL',
+  0x1D: 'maxPINLength',
+}
+
+clientPinKeys = {
+  0x01: 'pinUvAuthProtocol', 	# PIN/UV protocol version chosen by the platform. This MUST be a value supported by the authenticator, as determined by the pinUvAuthProtocols field of the authenticatorGetInfo response.
+  0x02: 'subCommand', 	# The specific action being requested.
+  0x03: 'keyAgreement', 	# The platform key-agreement key. This COSE_Key-encoded public key MUST contain the optional "alg" parameter and MUST NOT contain any other optional parameters. The "alg" parameter MUST contain a COSEAlgorithmIdentifier value.
+  0x04: 'pinUvAuthParam', 	# The output of calling authenticate on some context specific to the subcommand.
+  0x05: 'newPinEnc', 	# An encrypted PIN.
+  0x06: 'pinHashEnc', 	# An encrypted proof-of-knowledge of a PIN.
+  0x09: 'permissions', 	# Bitfield of permissions. If present, MUST NOT be 0. See § 6.5.5.7 Operations to Obtain a pinUvAuthToken.
+  0x0a: 'rpId', 	# The RP ID to assign as the permissions RP ID.
+}
+
+clientPinSubCommandoKeys = {
+  0x01: 'getPINRetries',
+  0x02: 'getKeyAgreement',
+  0x03: 'setPIN',
+  0x04: 'changePIN',
+  0x05: 'getPinToken ',	# superseded by getPinUvAuthTokenUsingUvWithPermissions or getPinUvAuthTokenUsingPinWithPermissions, thus for backwards compatibility only
+  0x06: 'getPinUvAuthTokenUsingUvWithPermissions',
+  0x07: 'getUVRetries',
+  0x09: 'getPinUvAuthTokenUsingPinWithPermissions',
+}
+
+clientPinResponseKeys = {
+  0x01: 'KeyAgreement', # The result of the authenticator calling getPublicKey
+  0x02: 'pinUvAuthToken', # The pinUvAuthToken, encrypted by calling encrypt with the shared secret as the key.
+  0x03: 'pinRetries', # Number of PIN attempts remaining before lockout. This is optionally used to show in UI when collecting the PIN in setting a new PIN, changing existing PIN and obtaining a pinUvAuthToken flows.
+  0x04: 'powerCycleState', # Present and true if the authenticator requires a power cycle before any future PIN operation
+  0x05: 'uvRetries',	# Number of uv attempts remaining before lockout.
+}
+
+authenticatorBioEnrollmentKeys = {
+  0x01: 'modality', 	# The user verification modality being requested
+  0x02: 'subCommand', 	# The authenticator user verification sub command currently being requested
+  0x03: 'subCommandParams', 	# Map of subCommands parameters. This parameter MAY be omitted when the subCommand does not take any arguments.
+  0x04: 'pinUvAuthProtocol', 	# PIN/UV protocol version chosen by the platform.
+  0x05: 'pinUvAuthParam', 	# The output of calling authenticate on some context specific to the subcommand.
+  0x06: 'getModality', 	# Get the user verification type modality. This MUST be set to true.
+}
+
+authenticatorBioEnrollmentSubcommandKeys = {
+  0x01: 'enrollBegin',
+  0x02: 'enrollCaptureNextSample',
+  0x03: 'cancelCurrentEnrollment',
+  0x04: 'enumerateEnrollments',
+  0x05: 'setFriendlyName',
+  0x06: 'removeEnrollment',
+  0x07: 'getFingerprintSensorInfo',
+}
+
+authenticatorBioEnrollmentResponseKeys = {
+  0x01: 'modality',	# The user verification modality.
+  0x02: 'fingerprintKind',	# Indicates the type of fingerprint sensor. For touch type sensor, its value is 1. For swipe type sensor its value is 2.
+  0x03: 'maxCaptureSamplesRequiredForEnroll',	# Indicates the maximum good samples required for enrollment.
+  0x04: 'templateId',	# Template Identifier.
+  0x05: 'lastEnrollSampleStatus',	# Last enrollment sample status.
+  0x06: 'remainingSamples',	# Number of more sample required for enrollment to complete
+  0x07: 'templateInfos',	# Array of templateInfo’s
+  0x08: 'maxTemplateFriendlyName',	# Indicates the maximum number of bytes the authenticator will accept as a templateFriendlyName.
+}
 
 
 # maintain some state
@@ -77,6 +282,32 @@ current_cbor_cmd = 0 # cbor cmd
 ### U2FHID protocol messages
 # https://fidoalliance.org/specs/fido-u2f-v1.0-ps-20141009/fido-u2f-hid-protocol-ps-20141009.html#u2fhid-protocol-implementation
 # https://fidoalliance.org/specs/fido-u2f-v1.0-ps-20141009/fido-u2f-u2f_hid.h-v1.0-ps-20141009.txt
+
+class MyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, (bytes, bytearray)):
+            return obj.hex()
+        # Let the base class default method raise the TypeError
+        return json.JSONEncoder.default(self, obj)
+
+def map_keys(d, m):
+    for k, v in d.copy().items():
+        d.pop(k)
+        mk = m[k]
+        d[mk] = v
+    return d
+
+def map_hex(d):
+	for k, v in d.copy().items():
+		match v:
+			case bytes():
+				d[k] = '0x' + v.hex()
+			case dict():
+				d[k] = map_hex(v)
+			case _:	
+				d[k] = v
+	return d
+
 
 def u2fhid(cmd, msg, msg_type):
 	if( msg_type == "request"):
@@ -106,8 +337,10 @@ def u2fhid_request(cmd, msg):
 			print("U2FHID_LOCK[TODO]")
 		case CTAPHID.CBOR:
 			(ctap_cmd,), msg = struct.unpack("B", msg[:1]), msg[1:]
-			print("CTAPHID_CBOR[%i]" % ctap_cmd)
+			print("CTAPHID_CBOR[0x%02x]" % ctap_cmd)
 			cbor(ctap_cmd,msg)
+		case CTAPHID.CANCEL:
+			print("CTAPHID_CANCEL[%i]" % cmd)
 		case _:
 			print("unknown command=%i" % cmd)
 
@@ -131,9 +364,12 @@ def u2fhid_response(cmd, msg):
 		case U2FHID.LOCK:
 			print("U2FHID_LOCK[TODO]")
 		case CTAPHID.CBOR:
-			(ctap_cmd,), msg = struct.unpack("B", msg[:1]), msg[1:]
-			print("CTAPHID_CBOR[%i]" % ctap_cmd)
-			cbor(ctap_cmd,msg)
+			(ctap_status_code,), msg = struct.unpack("B", msg[:1]), msg[1:]
+			print("CTAPHID_CBOR[0x%02x]" % ctap_status_code)
+			if ctap_status_code != CTAP2_OK:
+				print("\t\tERROR:", status_codes[ctap_status_code])
+				return
+			cbor(0,msg)
 		case CTAPHID.KEEPALIVE:
 			(status_code,), msg = struct.unpack("B", msg[:1]), msg[1:]
 			#assert(len(msg)==0)
@@ -146,7 +382,7 @@ def u2fhid_response(cmd, msg):
 					status = 'unknonw status code'
 			print("CTAPHID_KEEPALIVE[%s]" % status)
 		case _:
-			print("unknown command=%i" % cmd)
+			print("unknown command response=%i" % cmd)
 
 ### U2F protocol messages
 
@@ -230,12 +466,13 @@ def u2f_response(msg):
 
 def cbor(cmd,data):
 	global current_cbor_cmd
+	print("CMD: %x : %s" % (cmd, binascii.hexlify(data)))
 	match cmd:
 		case 0:
 			cbor_response(current_cbor_cmd, data)
 		case Authenticator.MakeCredential:
 			print("\tMakeCredential:")
-			cbormap = cbor2.decoder.loads(data)
+			cbormap = cbor2.loads(data)
 			# required
 			clientDataHash = cbormap[1]
 			rp = cbormap[2]
@@ -245,14 +482,14 @@ def cbor(cmd,data):
 			print("\t\trp: %s" % rp)
 			print("\t\tuser: %s" % user)
 			print("\t\tpubKeyCredParams: %s" % pubKeyCredParams)
-			# TODO: what else is there?
 			del cbormap[1]; del cbormap[2]; del cbormap[3]; del cbormap[4]
-			for i in cbormap:
-				print("\t\t\tTODO", cbormap[i])
-			
+			# TODO: what else is there?
+			# optional
+			for k,v in cbormap.items():
+				print("\t\t%s(%x): %s" % (makeCredentialKeys[k], k, v) )
 		case Authenticator.GetAssertion:
 			print("\tGetAssertion:")
-			cbormap = cbor2.decoder.loads(data)
+			cbormap = cbor2.loads(data)
 			# required
 			rpId = cbormap[1]
 			print("\t\t%s: %s" % ("rpId",rpId) )
@@ -261,21 +498,47 @@ def cbor(cmd,data):
 			print("\t\t%s: %s" % ("clientDataHash",binascii.hexlify(clientDataHash)) )
 			del(cbormap[2])
 			# optional
-			if 3 in cbormap:
-				allowList = cbormap[3]
-				#print("\t\t%s: %s" % ("allowList",(allowList)) )
-				print("\t\t%s:" % ("allowList") )
-				for allow in allowList:
-					print("\t\t\t%s: %s" % ("id",binascii.hexlify(allow["id"])) )
-					print("\t\t\t%s: %s" % ("type",allow["type"]) )
-					if "transports" in allow:
-						print("\t\t\t%s: %s" % ("transports",allow["transports"]) )
-				del(cbormap[3])
-			# and the rest...
-			for i in cbormap:
-				print("\t\t\tTODO???", i, cbormap[i])
+			for k,v in cbormap.items():
+				print("\t\t%s(%x): %s" % (getAssertionKeys[k], k, v) )
 		case Authenticator.GetInfo:
 			print("\tGetInfo")
+		case Authenticator.ClientPIN:
+			cbormap = cbor2.loads(data)
+			print("\tClientPIN", cbormap)
+			# required
+			subCommand = cbormap[2]
+			print("\t\t%s: %s" % (clientPinKeys[2], clientPinSubCommandoKeys[subCommand]) )
+			del(cbormap[2])
+			# rest
+			for k,v in cbormap.items():
+				print("\t\t%s: %s" % (clientPinKeys[k], v) )
+		case Authenticator.GetNextAssertion:
+			print("\tGetNextAssertion:")
+			cbormap = cbor2.loads(data)
+			for k,v in cbormap.items():
+				print("\t\t%i: %s" % (k, v) )
+		case Authenticator.AuthenticatorBioEnrollment:
+			cbormap = cbor2.loads(data)
+			print("\tAuthenticatorBioEnrollment", cbormap)
+			if 2 in cbormap:
+				subCommand = cbormap[2]
+				print("\t\t%s: %s" % (authenticatorBioEnrollmentKeys[2], authenticatorBioEnrollmentSubcommandKeys[subCommand]) )
+				del(cbormap[2])
+			for k,v in cbormap.items():
+				print("\t\t%s: %s" % (authenticatorBioEnrollmentKeys[k], v) )
+		case Authenticator.PrototypeAuthenticatorBioEnrollment:
+			cbormap = cbor2.loads(data)
+			print("\tAuthenticatorBioEnrollment (FIDO_2_1_PRE)", cbormap)
+			if 2 in cbormap:
+				subCommand = cbormap[2]
+				print("\t\t%s: %s" % (authenticatorBioEnrollmentKeys[2], authenticatorBioEnrollmentSubcommandKeys[subCommand]) )
+				del(cbormap[2])
+			for k,v in cbormap.items():
+				print("\t\t%s: %s" % (authenticatorBioEnrollmentKeys[k], v) )
+		case Authenticator.AuthenticatorCredentialManagement:
+			cbormap = cbor2.loads(data)
+			print("\tAuthenticatorCredentialManagement (FIDO_2_1_PRE)", cbormap)
+			authenticatorCredentialManagement(cbormap)
 		case _:
 			print("\t\tTODO", cmd)
 			print("\t\t: %s" % binascii.hexlify(data))
@@ -286,13 +549,16 @@ def cbor_response(cmd, data):
 		case Authenticator.MakeCredential:
 			print("\tMakeCredential (response):")
 			#print("\t\t: %s" % binascii.hexlify(data))
-			cbormap = cbor2.decoder.loads(data)
+			cbormap = cbor2.loads(data)
 			# required
 			fmt = cbormap[1]
+			del(cbormap[1])
 			print("\t\t%s: %s" % ("fmt",fmt) )
 			authData = cbormap[2]
+			del(cbormap[2])
 			print("\t\t%s: %s" % ("authData", binascii.hexlify(authData)) )
 			attStmt = cbormap[3]
+			del(cbormap[3])
 			#print("\t\t%s: %s" % ("attStmt",attStmt) )
 			print("\t\tattStmt:")
 			attestationStatement(fmt,attStmt)
@@ -303,16 +569,24 @@ def cbor_response(cmd, data):
 			if 5 in cbormap:
 				largeBlobKey = cbormap[5]
 				print("\t\t%s: %s" % ("largeBlobKey",largeBlobKey) )
+			# optional
+			for k,v in cbormap.items():
+				print("\t\t%s(%x): %s" % (makeCredentialResponseKeys[k], k, v) )
 
 		case Authenticator.GetAssertion:
 			print("\tGetAssertion (response):")
 			#print("\t\t: %s" % binascii.hexlify(data))
-			cbormap = cbor2.decoder.loads(data)
+			cbormap = cbor2.loads(data)
 			# required
+			#jsonified = json.dumps( cbormap, indent=4, cls=MyEncoder )
+			#print(jsonified)
+			#jsonified = json.dumps( map_keys(cbormap,getAssertionResponseKeys), indent=4, cls=MyEncoder )
+			#print(jsonified)
 			credential = cbormap[1]
 			print("\t\t%s:" % ("credential") )
 			print("\t\t\t%s: %s" % ("id",binascii.hexlify(credential["id"])) )
 			print("\t\t\t%s: %s" % ("type",credential["type"]) )
+			###
 			if "transports" in credential:
 				print("\t\t\t%s: %s" % ("transports",credential["transports"]) )
 			del(cbormap[1])
@@ -323,16 +597,11 @@ def cbor_response(cmd, data):
 			print("\t\t%s: %s" % ("signature",binascii.hexlify(signature)) )
 			del(cbormap[3])
 			# optional
-			if 4 in cbormap:
-				user = cbormap[4]
-				print("\t\t%s: %s" % ("user",user) )
-				del(cbormap[4])
-			# and the rest...
-			for i in cbormap:
-				print("\t\t\tTODO???", i, cbormap[i])
+			for k,v in cbormap.items():
+				print("\t\t%s(%x): %s" % (getAssertionResponseKeys[k], k, v) )
 		case Authenticator.GetInfo:
-			print("\tGetInfo (response):")
-			cbormap = cbor2.decoder.loads(data)
+			cbormap = cbor2.loads(data)
+			print("\tGetInfo (response):", cbormap)
 			# required
 			versions = cbormap[1]
 			print("\t\t%s: %s" % ("versions",versions) )
@@ -341,25 +610,30 @@ def cbor_response(cmd, data):
 			print("\t\t%s: %s" % ("aaguid",binascii.hexlify(aaguid)) )
 			del(cbormap[3])
 			# optional
-			if 2 in cbormap:
-				extensions = cbormap[2]
-				print("\t\t%s: %s" % ("extensions",extensions) )
-				del(cbormap[2])
-			if 4 in cbormap:
-				options = cbormap[4]
-				print("\t\t%s: %s" % ("options",options) )
-				del(cbormap[4])
-			if 5 in cbormap:
-				maxMsgSize = cbormap[5]
-				print("\t\t%s: %s" % ("maxMsgSize",maxMsgSize) )
-				del(cbormap[5])
-			if 6 in cbormap:
-				pinUvAuthProtocols = cbormap[6]
-				print("\t\t%s: %s" % ("pinUvAuthProtocols",pinUvAuthProtocols) )
-				del(cbormap[6])
-			# and the rest...
-			for i in cbormap:
-				print("\t\t\tTODO???", i, cbormap[i])
+			for k,v in cbormap.items():
+				print("\t\t%s: %s" % (info[k], v) )
+		case Authenticator.ClientPIN:
+			cbormap = cbor2.loads(data)
+			print("\tClientPIN", cbormap)
+			# optional
+			for k,v in cbormap.items():
+				print("\t\t%s: %s" % (clientPinResponseKeys[k], v) )
+		case Authenticator.AuthenticatorBioEnrollment:
+			cbormap = cbor2.loads(data)
+			print("\tAuthenticatorBioEnrollment", cbormap)
+			# optional
+			for k,v in cbormap.items():
+				print("\t\t%s: %s" % (authenticatorBioEnrollmentResponseKeys[k], v) )
+		case Authenticator.PrototypeAuthenticatorBioEnrollment:
+			cbormap = cbor2.loads(data)
+			print("\tAuthenticatorBioEnrollment (FIDO_2_1_PRE)", cbormap)
+			# optional
+			for k,v in cbormap.items():
+				print("\t\t%s: %s" % (authenticatorBioEnrollmentResponseKeys[k], v) )
+		case Authenticator.AuthenticatorCredentialManagement:
+			cbormap = cbor2.loads(data)
+			print("\tAuthenticatorCredentialManagement (FIDO_2_1_PRE)", cbormap)
+			authenticatorCredentialManagementResponse(cbormap)
 		case _:
 			print("\tTODO (response):")
 			print("\t\t: %s" % binascii.hexlify(data))
@@ -384,6 +658,91 @@ def attestationStatement(fmt,attStmt):
 		case _:
 			print("\t\t\tTODO", fmt)
 
+# manage discoverable credentials
+authenticatorCredentialManagementKeys = {
+  0x01: 'subCommand',
+  0x02: 'subCommandParams',
+  0x03: 'pinUvAuthProtocol',
+  0x04: 'pinUvAuthParam', 	# First 16 bytes of HMAC-SHA-256 of contents using pinUvAuthToken
+}
+
+authenticatorCredentialManagementSubcommandKeys = {
+  0x01: 'getCredsMetadata',
+  0x02: 'enumerateRPsBegin',
+  0x03: 'enumerateRPsGetNextRP',
+  0x04: 'enumerateCredentialsBegin',
+  0x05: 'enumerateCredentialsGetNextCredential',
+  0x06: 'deleteCredential',
+  0x07: 'updateUserInformation',
+}
+
+authenticatorCredentialManagementSubcommandParamKeys = {
+  0x01: 'rpIDHash',
+  0x02: 'credentialID',
+  0x03: 'user',
+}
+
+authenticatorCredentialManagementResponseKeys = {
+	0x01: 'existingResidentCredentialsCount',
+	0x02: 'maxPossibleRemainingResidentCredentialsCount',
+	0x03: 'rp',
+	0x04: 'rpIDHash',
+	0x05: 'totalRPs',
+	0x06: 'user',
+	0x07: 'credentialID',
+	0x08: 'publicKey',
+	0x09: 'totalCredentials',
+	0x0a: 'credProtect',
+	0x0b: 'largeBlobKey',
+	0x0c: 'thirdPartyPayment',
+}
+
+import pprint
+
+def authenticatorCredentialManagementSubcommandParam(cbormap):
+	map_hex(cbormap)
+	for k,v in cbormap.items():
+		name = authenticatorCredentialManagementSubcommandParamKeys[k]
+		match k:
+			case 0x01: # rpIDHash
+				value = binascii.hexlify(v)
+			case 0x02: # credentialID
+				value = binascii.hexlify(v)
+			case _:
+				value = v
+		print("\t\t%s (%i): %s" % (name, k, value) )
+
+def authenticatorCredentialManagement(cbormap):
+	map_hex(cbormap)
+	for k,v in cbormap.items():
+		name = authenticatorCredentialManagementKeys[k]
+		match k:
+			case 0x01: # subCommand
+				value = "%s (%i)" % (authenticatorCredentialManagementSubcommandKeys[v],v)
+			case 0x02: # subCommandParams
+				# value = authenticatorCredentialManagementSubcommandParam(v)
+				value = (v)
+			case _:
+				value = v
+		print("\t\t%s (%i): %s" % (name, k, value) )
+
+
+def authenticatorCredentialManagementResponse_(cbormap):
+	map_hex(cbormap)
+	for k,v in cbormap.items():
+		name = authenticatorCredentialManagementResponseKeys[k]
+		value = v
+		print("\t\t%s (%i): %s" % (name, k, value) )
+
+def authenticatorCredentialManagementResponse(cbormap):
+	map_hex(cbormap)
+	map_keys(cbormap)
+	for k,v in cbormap.items():
+		name = authenticatorCredentialManagementResponseKeys[k]
+		value = v
+		print("\t\t%s (%i): %s" % (name, k, value) )
+
+
 
 ### main
 
@@ -394,6 +753,7 @@ socket.connect('tcp://127.0.0.1:5678')
 socket.setsockopt_string(zmq.SUBSCRIBE, '')
 
 command = 0
+msg = b''
 while True:
 	report = socket.recv()
 	#print(binascii.hexlify(report))
@@ -408,7 +768,7 @@ while True:
 	if( cmd&0x80 ):
 		command = cmd&0x7f
 		(msg_size,), report = struct.unpack(">H", report[:2]), report[2:]
-#		print("[%s] Command %i [%i bytes]" % (format(channelID, '08x'), cmd&127, msg_size))
+		print("[%s] Command %i [%i bytes]" % (format(channelID, '08x'), cmd&127, msg_size))
 		msg = report
 		if( len(msg) > msg_size):
 			msg = msg[:msg_size] # strip 0s
