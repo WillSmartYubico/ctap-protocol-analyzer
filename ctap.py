@@ -796,8 +796,10 @@ with open(file, mode='r', newline='') as file:
 			
 			if (re.match("OUT",row["Record"])):
 				msg_type = "request"
+				direction_indicator = "request "
 			else:
 				msg_type = "response"
+				direction_indicator = "response"
 
 			report = bytearray.fromhex( row['Data'])
 
@@ -819,19 +821,19 @@ with open(file, mode='r', newline='') as file:
 				if( cmd&0x80 ):
 					command = cmd&0x7f
 					(msg_size,), report = struct.unpack(">H", report[:2]), report[2:]
-					print("Index %s Channel [%s] Command %s [%i bytes]" % (row['Index'], format(channelID, '08x'), format(cmd&0x7f, '02x'), msg_size))
+					print("Index %s Channel [%s] %s Command 0x%s [%i bytes]" % (row['Index'], format(channelID, '08x'), direction_indicator, format(cmd&0x7f, '02x'), msg_size))
 					msg = report
 					if( len(msg) > msg_size):
 						msg = msg[:msg_size] # strip 0s
 						u2fhid(command, msg, msg_type) # msg complete
 				else:
-					print("Index %s Channel [%s] Cont %s" % (row['Index'], format(channelID, '08x'), format(cmd&0x7f, '02x')))
+					print("Index %s Channel [%s] %s Cont 0x%s" % (row['Index'], format(channelID, '08x'), direction_indicator, format(cmd&0x7f, '02x')))
 					if msg:
 						msg += report
 						if( len(msg) > msg_size):
 							msg = msg[:msg_size] # strip 0s
 							u2fhid(command, msg, msg_type) # msg complete
 					else:
-						print("Index %s Channel [%s] Cont %s without corresponding command packet" % (row['Index'], format(channelID, '08x'), format(cmd&0x7f, '02x')))
+						print("Index %s Channel [%s] %s Cont 0x%s without corresponding command packet" % (row['Index'], format(channelID, '08x'), direction_indicator, format(cmd&0x7f, '02x')))
 			else:
 				print("Device %s endpoint %s not on CTAP devices list" % (row["Dev"],row["Ep"]))
