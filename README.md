@@ -13,6 +13,10 @@ This is a quick and dirty implementation of a CTAP protocol sniffer using a Rasp
 Download and install Raspberry Pi OS Lite (64 bit) on your Raspberry Pi 4, as documented
 [here](https://www.raspberrypi.com/software/).
 
+Before booting:
+- enable ssh access (`touch /boot/firmware/ssh`)
+- in order to be able to use USB gadget mode, add the line `dtoverlay=dwc2` to `boot/config/txt`
+
 You can use an SD card or a USB flash drive.
 If you install on a USB flash drive, you may need to
 [enable this](https://www.raspberrypi.com/documentation/computers/raspberry-pi.html#usb-mass-storage-boot)
