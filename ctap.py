@@ -804,7 +804,18 @@ with open(file, mode='r', newline='') as file:
 
 	print(headers)
 
+	#Keep the message and message size state for request and response separate
 	msg = bytearray()
+	msg_req = bytearray()
+	msg_res = bytearray()
+	msg_size = 0
+	msg_size_req = 0
+	msg_size_res = 0
+	command = 0
+	command_req = 0
+	command_res = 0
+	
+
 	for row in reader:
 		#print (row['Len'])
 		if (re.search("txn", row["Record"]) and (row['Len'] == "64 B")):
@@ -813,9 +824,15 @@ with open(file, mode='r', newline='') as file:
 			if (re.match("OUT",row["Record"])):
 				msg_type = "request"
 				direction_indicator = "request "
+				msg = msg_req
+				msg_size = msg_size_req
+				command = command_req
 			else:
 				msg_type = "response"
 				direction_indicator = "response"
+				msg = msg_res
+				msg_size = msg_size_res
+				command = command_res
 
 			report = bytearray.fromhex( row['Data'])
 
@@ -852,5 +869,16 @@ with open(file, mode='r', newline='') as file:
 							u2fhid(command, msg, msg_type) # msg complete
 					else:
 						print("Index %s Channel [%s] %s Cont 0x%s without corresponding command packet" % (row['Index'], format(channelID, '08x'), direction_indicator, format(cmd&0x7f, '02x')))
+
+				#save state 
+				if (msg_type == "request"):
+					msg_req = msg
+					msg_size_req = msg_size
+					command_req = command
+				else:
+					msg_res = msg
+					msg_size_res = msg_size
+					command_res = command
+
 			else:
 				print("Device %s endpoint %s not on CTAP devices list" % (row["Dev"],row["Ep"]))
