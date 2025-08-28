@@ -493,7 +493,15 @@ def cbor(cmd,data):
 			# TODO: what else is there?
 			# optional
 			for k,v in cbormap.items():
-				print("\t\t%s(%x): %s" % (makeCredentialKeys[k], k, v) )
+				if k==5: # 'excludeList'
+					print("\t\t%s(%x):" % (makeCredentialKeys[k], k) )
+					credentialListCount = 0
+					for credential in v:
+						credentialListCount=credentialListCount+1
+						print("\t\t\t %i : %s" % (credentialListCount,credential))
+				else:
+					print("\t\t%s(%x): %s" % (makeCredentialKeys[k], k, v) )
+
 		case Authenticator.GetAssertion:
 			print("\tGetAssertion:")
 			cbormap = cbor2.loads(data)
@@ -506,7 +514,15 @@ def cbor(cmd,data):
 			del(cbormap[2])
 			# optional
 			for k,v in cbormap.items():
-				print("\t\t%s(%x): %s" % (getAssertionKeys[k], k, v) )
+				if k==3: # allowList
+					print("\t\t%s(%x):" % (getAssertionKeys[k], k) )
+					credentialListCount = 0
+					for credential in v:
+						credentialListCount=credentialListCount+1
+						print("\t\t\t %i : %s" % (credentialListCount,credential))
+				else:
+					print("\t\t%s(%x): %s" % (getAssertionKeys[k], k, v) )
+
 		case Authenticator.GetInfo:
 			print("\tGetInfo")
 		case Authenticator.ClientPIN:
