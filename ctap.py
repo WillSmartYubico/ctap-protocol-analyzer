@@ -826,10 +826,11 @@ with open(file, mode='r', newline='') as file:
 			(channelID,cmd,), report = struct.unpack(">IB", report[:5]), report[5:]
 			#print("%s" % format(channelID, '08x'))
 			if format(channelID, '08x') == 'ffffffff': #look for CTAP channel requests
-				ctap_devices.append((row["Dev"],row["Ep"]))
-				print("Detected CTAP channel request.  Device %s endpoint %s added to CTAP devices list" % (row["Dev"],row["Ep"]))
-			
-			if (row["Dev"],row["Ep"]) in ctap_devices:
+				if not ((row["Dev"],row["Ep"]) in ctap_devices):					
+					ctap_devices.append((row["Dev"],row["Ep"]))
+					print("Detected CTAP channel request.  Device %s endpoint %s added to CTAP devices list" % (row["Dev"],row["Ep"]))
+
+			if ((row["Dev"],row["Ep"]) in ctap_devices):
 				#print("Device OK")
 
 				#print(channelID)
