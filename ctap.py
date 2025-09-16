@@ -211,6 +211,7 @@ info = {
   0x1B: 'pinComplexityPolicy',
   0x1C: 'pinComplexityPolicyURL',
   0x1D: 'maxPINLength',
+  0x1E: 'encCredState',
 }
 
 clientPinKeys = {
