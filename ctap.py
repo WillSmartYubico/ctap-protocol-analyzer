@@ -634,7 +634,10 @@ def cbor_response(cmd, data):
 			del(cbormap[3])
 			# optional
 			for k,v in cbormap.items():
-				print("\t\t%s: %s" % (info[k], v) )
+				if k in info:
+					print("\t\t%s: %s" % (info[k], v) )
+				else:
+					print("\t\tUnknown GetInfo Member (%s): %s" % (k, v) )
 		case Authenticator.ClientPIN:
 			cbormap = cbor2.loads(data)
 			print("\tClientPIN", cbormap)
