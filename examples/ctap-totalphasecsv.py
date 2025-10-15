@@ -2,7 +2,7 @@
 Parses CTAP messages from TotalPhase USB Analyzer CSV Exports.
 """
 
-from ctap import u2fhid
+from ctap_protocol_analyzer.ctap import u2fhid
 import struct
 import csv
 import re
