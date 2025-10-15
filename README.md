@@ -17,4 +17,4 @@ Scans the local computer's Microsoft-Windows-WebAuthN Operational log and decode
 # Acknowledgements
 
 Almost all of the `ctap.py` code here has been written by   
-[https://github.com/joostd](Joost van Dijk), I'm just trying to make it easier for to use.
+[Joost van Dijk](https://github.com/joostd), I'm just trying to make it easier for to use.
