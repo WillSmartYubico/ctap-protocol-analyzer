@@ -322,7 +322,7 @@ def u2fhid(cmd, msg, msg_type):
 		u2fhid_response(cmd, msg)
 
 def u2fhid_request(cmd, msg):
-	print('--------------------------------------------------------------------------------')
+	#print('--------------------------------------------------------------------------------')
 	match cmd:
 		case U2FHID.PING:
 			print("U2FHID_PING[TODO]")
