@@ -1,0 +1,27 @@
+[project]
+name = "ctap-protocol-analyzer"
+version = "0.0.1"
+authors = [
+  { name="Joost van Dijk", email="joost.vandijk@yubico.com" },
+  { name="Will Smart", email="will.smart@yubico.com" },
+]
+description = "Decodes U2F and CTAP messages to make inspecting FIDO2 Security Keys easier."
+readme = "README.md"
+requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+license = "MIT"
+license-files = ["LICENCSE*"]
+
+[project.urls]
+Homepage = "https://github.com/WillSmartYubico/ctap-protocol-analyzer"
+Issues = "https://github.com/WillSmartYubico/ctap-protocol-analyzer/issues"
+
+[build-system]
+requires = ["hatchling >= 1.26"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ctap-protocol-analyzer"]
