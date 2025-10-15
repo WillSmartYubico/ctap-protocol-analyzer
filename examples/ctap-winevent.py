@@ -2,7 +2,7 @@
 # TODO: provide a way to filter events based on a time range
 # TODO: remove hard-coded limit to the number of processed events
 
-from ctap import u2fhid
+from ctap_protocol_analyzer.ctap import u2fhid
 import win32evtlog
 import xml.etree.ElementTree as ET
 

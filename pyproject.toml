@@ -1,5 +1,5 @@
 [project]
-name = "ctap-protocol-analyzer"
+name = "ctap_protocol_analyzer"
 version = "0.0.1"
 authors = [
   { name="Joost van Dijk", email="joost.vandijk@yubico.com" },
@@ -22,6 +22,3 @@ Issues = "https://github.com/WillSmartYubico/ctap-protocol-analyzer/issues"
 [build-system]
 requires = ["hatchling >= 1.26"]
 build-backend = "hatchling.build"
-
-[tool.hatch.build.targets.wheel]
-packages = ["ctap-protocol-analyzer"]
