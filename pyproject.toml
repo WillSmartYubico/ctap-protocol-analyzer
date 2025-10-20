@@ -1,6 +1,6 @@
 [project]
 name = "ctap_protocol_analyzer"
-version = "0.0.1"
+version = "0.0.2"
 authors = [
   { name="Joost van Dijk", email="joost.vandijk@yubico.com" },
   { name="Will Smart", email="will.smart@yubico.com" },
